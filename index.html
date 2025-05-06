@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Grocery Store Survey Dashboard</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    body {
+      background-color: #f9f9f9;
+      color: #333;
+      font-family: 'Segoe UI', sans-serif;
+      padding: 20px;
+    }
+    h1, h2 {
+      text-align: center;
+    }
+    .filters {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    select, button {
+      padding: 5px 10px;
+      font-size: 14px;
+    }
+    .chart-container {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-around;
+    }
+    .chart {
+      background: #fff;
+      margin: 20px;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    svg {
+      background-color: #f0f0f0;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Grocery Store Survey Dashboard</h1>
+
+  <div class="chart-container">
+    <div class="chart" id="bubbleChart">
+      <h2>Income vs Age (Bubble Chart)</h2>
+      <svg width="500" height="300"></svg>
+    </div>
+    <div class="chart" id="areaChart">
+      <h2>Purchase Amount by Chain (Area Chart)</h2>
+      <svg width="500" height="300"></svg>
+    </div>
+    <div class="chart" id="histogram">
+      <h2>Family Size Distribution (Histogram)</h2>
+      <svg width="500" height="300"></svg>
+    </div>
+  </div>
+
+  <script>
+    d3.csv("sample_grocery_data.csv", d => ({
+      Age: +d.Age,
+      Income: +d.Income,
+      PurchaseAmount: +d.PurchaseAmount,
+      Chain: d.Chain,
+      FamilySize: +d.FamilySize
+    })).then(data => {
+
+      // === Bubble Chart: Income vs Age ===
+      const svg1 = d3.select("#bubbleChart svg"),
+            margin1 = {top: 20, right: 30, bottom: 40, left: 50},
+            width1 = +svg1.attr("width") - margin1.left - margin1.right,
+            height1 = +svg1.attr("height") - margin1.top - margin1.bottom;
+
+      const g1 = svg1.append("g").attr("transform", `translate(${margin1.left},${margin1.top})`);
+      const x1 = d3.scaleLinear().domain(d3.extent(data, d => d.Age)).range([0, width1]);
+      const y1 = d3.scaleLinear().domain(d3.extent(data, d => d.Income)).range([height1, 0]);
+      const r1 = d3.scaleSqrt().domain(d3.extent(data, d => d.PurchaseAmount)).range([2, 10]);
+
+      g1.append("g").attr("transform", `translate(0,${height1})`).call(d3.axisBottom(x1));
+      g1.append("g").call(d3.axisLeft(y1));
+
+      g1.selectAll("circle")
+        .data(data)
+        .enter().append("circle")
+        .attr("cx", d => x1(d.Age))
+        .attr("cy", d => y1(d.Income))
+        .attr("r", d => r1(d.PurchaseAmount))
+        .attr("fill", "steelblue")
+        .attr("opacity", 0.6);
+
+      // === Area Chart: Purchase Amount by Chain ===
+      const svg2 = d3.select("#areaChart svg"),
+            margin2 = {top: 20, right: 30, bottom: 40, left: 50},
+            width2 = +svg2.attr("width") - margin2.left - margin2.right,
+            height2 = +svg2.attr("height") - margin2.top - margin2.bottom;
+
+      const g2 = svg2.append("g").attr("transform", `translate(${margin2.left},${margin2.top})`);
+      const chainData = Array.from(d3.rollup(data, v => d3.sum(v, d => d.PurchaseAmount), d => d.Chain))
+                            .map(([Chain, Total]) => ({Chain, Total}))
+                            .sort((a, b) => d3.descending(a.Total, b.Total));
+
+      const x2 = d3.scalePoint().domain(chainData.map(d => d.Chain)).range([0, width2]);
+      const y2 = d3.scaleLinear().domain([0, d3.max(chainData, d => d.Total)]).range([height2, 0]);
+
+      const area = d3.area()
+        .x(d => x2(d.Chain))
+        .y0(height2)
+        .y1(d => y2(d.Total))
+        .curve(d3.curveMonotoneX);
+
+      g2.append("path")
+        .datum(chainData)
+        .attr("fill", "lightblue")
+        .attr("stroke", "steelblue")
+        .attr("stroke-width", 2)
+        .attr("d", area);
+
+      g2.append("g").attr("transform", `translate(0,${height2})`).call(d3.axisBottom(x2));
+      g2.append("g").call(d3.axisLeft(y2));
+
+      // === Histogram: Family Size Distribution ===
+      const svg3 = d3.select("#histogram svg"),
+            margin3 = {top: 20, right: 30, bottom: 40, left: 50},
+            width3 = +svg3.attr("width") - margin3.left - margin3.right,
+            height3 = +svg3.attr("height") - margin3.top - margin3.bottom;
+
+      const g3 = svg3.append("g").attr("transform", `translate(${margin3.left},${margin3.top})`);
+      const x3 = d3.scaleLinear().domain(d3.extent(data, d => d.FamilySize)).nice().range([0, width3]);
+      const histogram = d3.histogram().value(d => d.FamilySize).domain(x3.domain()).thresholds(x3.ticks(10));
+      const bins = histogram(data);
+
+      const y3 = d3.scaleLinear().domain([0, d3.max(bins, d => d.length)]).range([height3, 0]);
+
+      g3.selectAll("rect")
+        .data(bins)
+        .enter().append("rect")
+        .attr("x", d => x3(d.x0) + 1)
+        .attr("y", d => y3(d.length))
+        .attr("width", d => x3(d.x1) - x3(d.x0) - 2)
+        .attr("height", d => height3 - y3(d.length))
+        .attr("fill", "orange");
+
+      g3.append("g").attr("transform", `translate(0,${height3})`).call(d3.axisBottom(x3));
+      g3.append("g").call(d3.axisLeft(y3));
+    });
+  </script>
+</body>
+</html>
